@@ -11,8 +11,8 @@ namespace SafeManualMemoryManagement.Analyzers
     {
         public const string DiagnosticId = "OwnershipViolation";
         private static readonly LocalizableString Title = "所有权错误";
-        private static readonly LocalizableString MessageFormat = "变量 '{0}' 被超出生命周期使用";
-        private static readonly LocalizableString Description = "在 MSWGC 标记的代码块内，变量超出其所有权生命周期后不应继续使用";
+        private static readonly LocalizableString MessageFormat = "变量 '{0}' 在所有权转移后仍被使用";
+        private static readonly LocalizableString Description = "在带有 [MSWGC] 标记的代码块内，变量在所有权转移后不应继续使用";
         private const string Category = "Ownership";
 
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
@@ -27,7 +27,7 @@ namespace SafeManualMemoryManagement.Analyzers
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
 
-            // 注册分析局部声明、赋值表达式以及标识符名称
+            // 分析局部声明、赋值表达式以及标识符名称
             context.RegisterSyntaxNodeAction(AnalyzeNode,
                 SyntaxKind.LocalDeclarationStatement,
                 SyntaxKind.SimpleAssignmentExpression,
@@ -36,40 +36,74 @@ namespace SafeManualMemoryManagement.Analyzers
 
         private void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
-            // 检查当前语法节点是否在以 MSWGC 标记的代码块内（可基于属性、注释或特定语法实现）
-            // 此处仅用伪代码示例：
+            // 仅在 [MSWGC] 标记的代码块内生效
             if (!IsInMSWGCScope(context.Node))
                 return;
 
-            // 这里可以实现对变量生命周期分析的逻辑，例如：
-            // - 检查变量赋值后的使用
-            // - 如果发生所有权转移（比如赋值运算），报告原变量在后续被使用的问题
+            // 示例：假设在赋值表达式中发生所有权转移，
+            // 则检测原变量是否在赋值后还被引用
+            if (context.Node is SimpleAssignmentExpressionSyntax assignExpr)
+            {
+                // 获取左侧标识符名称
+                if (assignExpr.Left is IdentifierNameSyntax originalIdentifier)
+                {
+                    // 使用 DataFlowAnalysis 分析所属代码块中变量的使用情况
+                    var block = assignExpr.FirstAncestorOrSelf<BlockSyntax>();
+                    if (block != null)
+                    {
+                        var dataFlow = context.SemanticModel.AnalyzeDataFlow(block);
+                        // 如果变量在赋值后仍然作为 "ReadInside" 出现，则报告错误
+                        if (dataFlow.ReadInside.Contains(context.SemanticModel.GetDeclaredSymbol(originalIdentifier)))
+                        {
+                            var diagnostic = Diagnostic.Create(Rule, originalIdentifier.GetLocation(), originalIdentifier.Identifier.Text);
+                            context.ReportDiagnostic(diagnostic);
+                        }
+                    }
+                }
+            }
 
-            // 示例：如果检测到局部变量声明，则模拟诊断报告
+            // 示例：局部变量声明中做简单检测（实际须结合数据流分析）
             if (context.Node is LocalDeclarationStatementSyntax localDecl)
             {
-                // 假设对声明中的变量进行所有权检查（实际需进一步数据流分析）
                 foreach (var variable in localDecl.Declaration.Variables)
                 {
-                    // 根据分析结果（此示例中总是假定发现错误）
-                    var diagnostic = Diagnostic.Create(Rule, variable.Identifier.GetLocation(), variable.Identifier.Text);
-                    context.ReportDiagnostic(diagnostic);
+                    // 此处简单模拟逻辑：如果变量名包含 "moved" 则认为已发生所有权转移
+                    // 实际需要根据赋值情况记录状态
+                    if (variable.Identifier.Text.Contains("moved"))
+                    {
+                        var diagnostic = Diagnostic.Create(Rule, variable.Identifier.GetLocation(), variable.Identifier.Text);
+                        context.ReportDiagnostic(diagnostic);
+                    }
                 }
             }
         }
 
-        // 根据你的实际方案，实现如何判断节点是否在 MSWGC 代码块内。
+        /// <summary>
+        /// 判断节点是否在带有 [MSWGC] 标记的方法或代码块内。
+        /// 这里假设 [MSWGC] 属性会作用于方法声明。
+        /// </summary>
         private bool IsInMSWGCScope(SyntaxNode node)
         {
-            // 示例：检查是否包含特定的注释标记，例如 // MSWGC
-            var parent = node;
-            while (parent != null)
+            // 遍历祖先节点，如果遇到方法声明，检查其属性列表
+            for (var current = node; current != null; current = current.Parent)
             {
-                if (parent is BlockSyntax block && block.GetLeadingTrivia().ToString().Contains("MSWGC"))
+                if (current is MethodDeclarationSyntax methodDeclaration)
                 {
-                    return true;
+                    foreach (var attrList in methodDeclaration.AttributeLists)
+                    {
+                        foreach (var attribute in attrList.Attributes)
+                        {
+                            // 简单匹配属性名 "MSWGC"
+                            if (attribute.Name.ToString() == "MSWGC" ||
+                                attribute.Name.ToString().EndsWith(".MSWGC"))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                    // 如果到达方法声明而没有匹配，则退出遍历（不向上查找类型或命名空间级别的属性）
+                    break;
                 }
-                parent = parent.Parent;
             }
             return false;
         }
