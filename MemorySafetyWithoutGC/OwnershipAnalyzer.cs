@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace SafeManualMemoryManagement.Analyzers
+namespace MemorySafetyWithoutGC
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class OwnershipAnalyzer : DiagnosticAnalyzer
@@ -68,29 +68,11 @@ namespace SafeManualMemoryManagement.Analyzers
                         }
                     }
                 }
-            }
-
-            // 局部变量声明: 通过简单规则检查如果变量名包含 "moved" 则认为发生了所有权转移
-            if (context.Node is LocalDeclarationStatementSyntax localDecl)
-            {
-                foreach (var variable in localDecl.Declaration.Variables)
-                {
-                    var symbol = context.SemanticModel.GetDeclaredSymbol(variable) as ILocalSymbol;
-                    if (symbol == null || !IsEligibleSymbol(symbol))
-                        continue; // 仅对符合要求的变量进行所有权检查
-
-                    if (variable.Identifier.Text.Contains("moved"))
-                    {
-                        var diagnostic = Diagnostic.Create(Rule, variable.Identifier.GetLocation(), variable.Identifier.Text);
-                        context.ReportDiagnostic(diagnostic);
-                    }
-                }
-            }
+            }                       
         }
 
         /// <summary>
-        /// 判断节点是否在带有 [MSWGC] 标记的方法或代码块内。
-        /// 本示例假定 [MSWGC] 属性作用于方法声明。
+        /// 判断节点是否在带有 [MSWGC] 标记的方法内。属性不能作用在代码块中
         /// </summary>
         private bool IsInMSWGCScope(SyntaxNode node)
         {

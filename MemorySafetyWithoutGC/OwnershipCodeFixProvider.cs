@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using System.Composition;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
@@ -9,7 +7,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Simplification;
 
-namespace SafeManualMemoryManagement.Analyzers
+namespace MemorySafetyWithoutGC
 {
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(OwnershipCodeFixProvider)), Shared]
     public class OwnershipCodeFixProvider : CodeFixProvider
