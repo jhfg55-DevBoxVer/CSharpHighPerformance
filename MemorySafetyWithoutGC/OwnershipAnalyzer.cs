@@ -12,12 +12,17 @@ namespace SafeManualMemoryManagement.Analyzers
         public const string DiagnosticId = "OwnershipViolation";
         private static readonly LocalizableString Title = "所有权错误";
         private static readonly LocalizableString MessageFormat = "变量 '{0}' 在所有权转移后仍被使用";
-        private static readonly LocalizableString Description = "在带有 [MSWGC] 标记的代码块内，变量在所有权转移后不应继续使用";
+        private static readonly LocalizableString Description = "在带有 [MSWGC] 标记的代码块内，仅对 safe 上下文中用于非托管内存的变量（要求满足 unmanaged 约束且不在 unsafe 中）所有权转移后不应继续使用";
         private const string Category = "Ownership";
 
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
-            DiagnosticId, Title, MessageFormat, Category,
-            DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
+            DiagnosticId,
+            Title,
+            MessageFormat,
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: Description);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 
@@ -36,24 +41,27 @@ namespace SafeManualMemoryManagement.Analyzers
 
         private void AnalyzeNode(SyntaxNodeAnalysisContext context)
         {
-            // 仅在 [MSWGC] 标记的代码块内生效
+            // 仅在 [MSWGC] 标记的代码块内进行分析
             if (!IsInMSWGCScope(context.Node))
                 return;
 
-            // 示例：假设在赋值表达式中发生所有权转移，
-            // 则检测原变量是否在赋值后还被引用
-            if (context.Node is SimpleAssignmentExpressionSyntax assignExpr)
+            // 赋值表达式: 检查原变量（左侧）的所有权转移情况
+            if (context.Node is AssignmentExpressionSyntax assignExpr &&
+                assignExpr.IsKind(SyntaxKind.SimpleAssignmentExpression))
             {
-                // 获取左侧标识符名称
                 if (assignExpr.Left is IdentifierNameSyntax originalIdentifier)
                 {
+                    var symbol = context.SemanticModel.GetSymbolInfo(originalIdentifier).Symbol as ILocalSymbol;
+                    if (symbol == null || !IsEligibleSymbol(symbol))
+                        return;
+
                     // 使用 DataFlowAnalysis 分析所属代码块中变量的使用情况
                     var block = assignExpr.FirstAncestorOrSelf<BlockSyntax>();
                     if (block != null)
                     {
                         var dataFlow = context.SemanticModel.AnalyzeDataFlow(block);
-                        // 如果变量在赋值后仍然作为 "ReadInside" 出现，则报告错误
-                        if (dataFlow.ReadInside.Contains(context.SemanticModel.GetDeclaredSymbol(originalIdentifier)))
+                        // 如果变量在赋值后仍然被读取，则报告错误
+                        if (dataFlow.ReadInside.Contains(symbol))
                         {
                             var diagnostic = Diagnostic.Create(Rule, originalIdentifier.GetLocation(), originalIdentifier.Identifier.Text);
                             context.ReportDiagnostic(diagnostic);
@@ -62,13 +70,15 @@ namespace SafeManualMemoryManagement.Analyzers
                 }
             }
 
-            // 示例：局部变量声明中做简单检测（实际须结合数据流分析）
+            // 局部变量声明: 通过简单规则检查如果变量名包含 "moved" 则认为发生了所有权转移
             if (context.Node is LocalDeclarationStatementSyntax localDecl)
             {
                 foreach (var variable in localDecl.Declaration.Variables)
                 {
-                    // 此处简单模拟逻辑：如果变量名包含 "moved" 则认为已发生所有权转移
-                    // 实际需要根据赋值情况记录状态
+                    var symbol = context.SemanticModel.GetDeclaredSymbol(variable) as ILocalSymbol;
+                    if (symbol == null || !IsEligibleSymbol(symbol))
+                        continue; // 仅对符合要求的变量进行所有权检查
+
                     if (variable.Identifier.Text.Contains("moved"))
                     {
                         var diagnostic = Diagnostic.Create(Rule, variable.Identifier.GetLocation(), variable.Identifier.Text);
@@ -80,11 +90,10 @@ namespace SafeManualMemoryManagement.Analyzers
 
         /// <summary>
         /// 判断节点是否在带有 [MSWGC] 标记的方法或代码块内。
-        /// 这里假设 [MSWGC] 属性会作用于方法声明。
+        /// 本示例假定 [MSWGC] 属性作用于方法声明。
         /// </summary>
         private bool IsInMSWGCScope(SyntaxNode node)
         {
-            // 遍历祖先节点，如果遇到方法声明，检查其属性列表
             for (var current = node; current != null; current = current.Parent)
             {
                 if (current is MethodDeclarationSyntax methodDeclaration)
@@ -101,9 +110,40 @@ namespace SafeManualMemoryManagement.Analyzers
                             }
                         }
                     }
-                    // 如果到达方法声明而没有匹配，则退出遍历（不向上查找类型或命名空间级别的属性）
                     break;
                 }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 判断变量是否为用于管理非托管内存的类型。
+        /// 本示例判定变量的类型必须满足 unmanaged 约束，并且变量声明位置必须在 safe 上下文中（不在 unsafe 语句块中）。
+        /// </summary>
+        private bool IsEligibleSymbol(ILocalSymbol symbol)
+        {
+            var type = symbol.Type;
+            // 首先判断类型是否满足 unmanaged 约束
+            if (!type.IsUnmanagedType)
+                return false;
+
+            // 再判断变量声明是否在 safe 上下文中
+            var syntax = symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+            if (syntax != null && IsInUnsafeContext(syntax))
+                return false;
+
+            return true;
+        }
+
+        /// <summary>
+        /// 判断给定语法节点是否在 unsafe 语句块中。
+        /// </summary>
+        private bool IsInUnsafeContext(SyntaxNode node)
+        {
+            for (var current = node; current != null; current = current.Parent)
+            {
+                if (current is UnsafeStatementSyntax)
+                    return true;
             }
             return false;
         }
