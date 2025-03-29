@@ -4,7 +4,10 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 namespace MoreUnmanagedTypes
 {
-    public unsafe struct UnmanagedString
+    // 定义非托管字符谓词，返回 true 表示保留此字符
+    public unsafe delegate bool UnmanagedCharPredicate(int codepoint, int charIndex);
+
+    public unsafe struct UnmanagedString : IComparable<UnmanagedString>, IEquatable<UnmanagedString>
     {
         public byte* Ptr;    // 非托管内存中存储 UTF-8 数据的起始地址
         public int Length;   // 当前字符串的字节长度
@@ -308,14 +311,253 @@ namespace MoreUnmanagedTypes
             return pos;
         }
 
+        /// 重写 ToString 方法（仅用于调试），内部调用 ToUtf16() 方法，
+        /// 通过构造新的托管字符串返回，但此处仅为测试，不建议在高性能场景中使用。
         public override string ToString()
         {
-            if (Length == 0)
-                return string.Empty;
-            byte[] data = new byte[Length];
+            // 此处仅作参考，建议在高性能场景中直接使用 ToUtf16(out int count)
+            int count;
+            IntPtr ptr = ToUtf16(out count);
+            string s = new string((char*)ptr, 0, count);
+            Marshal.FreeHGlobal(ptr);
+            return s;
+        }
+
+        //===========================================================
+        // 以下实现格式化与比较等运算符支持，不调用托管转换实现核心逻辑
+
+        /// <summary>
+        /// 将内部 UTF-8 数据转换为 UTF-16（非托管内存）表示。
+        /// 调用者负责释放返回的内存（使用 Marshal.FreeHGlobal）。
+        /// </summary>
+        /// <param name="charCount">转换后的字符数</param>
+        /// <returns>指向 UTF-16 字符数据的指针</returns>
+        public IntPtr ToUtf16(out int charCount)
+        {
+            // 此实现假设 UnmanagedString 仅存储 BMP 字符（最多 3 字节编码）
+            int count = 0;
+            int pos = 0;
+            while (pos < Length)
+            {
+                int cp;
+                int size = DecodeUtf8Char(Ptr + pos, Length - pos, out cp);
+                if (size == 0)
+                    throw new InvalidOperationException("Invalid UTF-8 sequence");
+                pos += size;
+                count++;
+            }
+            charCount = count;
+            IntPtr utf16Ptr = Marshal.AllocHGlobal(count * sizeof(char));
+            char* dest = (char*)utf16Ptr;
+            pos = 0;
+            int index = 0;
+            while (pos < Length && index < count)
+            {
+                int cp;
+                int size = DecodeUtf8Char(Ptr + pos, Length - pos, out cp);
+                pos += size;
+                // 此处不处理需要代理对的情况
+                dest[index++] = (char)cp;
+            }
+            return utf16Ptr;
+        }
+
+        // IEquatable 实现：逐字节比较
+        public bool Equals(UnmanagedString other)
+        {
+            if (Length != other.Length)
+                return false;
             for (int i = 0; i < Length; i++)
-                data[i] = Ptr[i];
-            return System.Text.Encoding.UTF8.GetString(data);
+            {
+                if (Ptr[i] != other.Ptr[i])
+                    return false;
+            }
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj is UnmanagedString other)
+                return Equals(other);
+            return false;
+        }
+
+        // GetHashCode 使用 FNV-1a 算法
+        public override int GetHashCode()
+        {
+            const int fnvPrime = 0x01000193;
+            int hash = unchecked((int)0x811C9DC5);
+            for (int i = 0; i < Length; i++)
+            {
+                hash ^= Ptr[i];
+                hash *= fnvPrime;
+            }
+            return hash;
+        }
+
+        // IComparable 实现：按字典序逐字节比较
+        public int CompareTo(UnmanagedString other)
+        {
+            int min = Length < other.Length ? Length : other.Length;
+            for (int i = 0; i < min; i++)
+            {
+                int diff = Ptr[i] - other.Ptr[i];
+                if (diff != 0)
+                    return diff;
+            }
+            return Length - other.Length;
+        }
+
+        // 重载比较运算符
+        public static bool operator ==(UnmanagedString left, UnmanagedString right) => left.Equals(right);
+        public static bool operator !=(UnmanagedString left, UnmanagedString right) => !left.Equals(right);
+        public static bool operator <(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) < 0;
+        public static bool operator >(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) > 0;
+        public static bool operator <=(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) <= 0;
+        public static bool operator >=(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) >= 0;
+
+        /// <summary>
+        /// 在字符串尾部追加一个字符.
+        /// </summary>
+        public void Push(char c)
+        {
+            // 等同于在末尾插入，此处使用已有 InsertAt 方法
+            InsertAt(CharCount(), c);
+        }
+
+        /// <summary>
+        /// 在字符串尾部追加一个字符串.
+        /// </summary>
+        public void PushStr(string s)
+        {
+            InsertAt(CharCount(), s);
+        }
+
+        /// <summary>
+        /// 以字符索引为单位，返回并分离出从指定索引开始的后半部分字符串。
+        /// 原字符串长度更新为分离前半部分的长度。
+        /// </summary>
+        public UnmanagedString SplitOff(int charIndex)
+        {
+            int offset = GetByteOffsetForCharIndex(charIndex);
+            int newLen = Length - offset;
+            UnmanagedString result = WithCapacity(newLen);
+            // 拷贝剩余的字节
+            for (int i = 0; i < newLen; i++)
+            {
+                result.Ptr[i] = Ptr[offset + i];
+            }
+            result.Length = newLen;
+            // 更新当前字符串：截断到 offset
+            Length = offset;
+            return result;
+        }
+
+        /// <summary>
+        /// 删除 [charIndexStart, charIndexEnd) 范围内的字符，并返回被删除部分构成的 UnmanagedString。
+        /// </summary>
+        public UnmanagedString Drain(int charIndexStart, int charIndexEnd)
+        {
+            int start = GetByteOffsetForCharIndex(charIndexStart);
+            int end = GetByteOffsetForCharIndex(charIndexEnd);
+            if (end < start)
+                throw new ArgumentException("结束位置不能小于起始位置");
+
+            int drainLen = end - start;
+            UnmanagedString result = WithCapacity(drainLen);
+            for (int i = 0; i < drainLen; i++)
+            {
+                result.Ptr[i] = Ptr[start + i];
+            }
+            result.Length = drainLen;
+            // 移动后续数据填补空缺
+            int remaining = Length - end;
+            for (int i = 0; i < remaining; i++)
+            {
+                Ptr[start + i] = Ptr[end + i];
+            }
+            Length -= drainLen;
+            return result;
+        }
+
+        /// <summary>
+        /// 用 replacement 替换 [charIndexStart, charIndexEnd) 范围的字符。
+        /// </summary>
+        public void ReplaceRange(int charIndexStart, int charIndexEnd, UnmanagedString replacement)
+        {
+            int start = GetByteOffsetForCharIndex(charIndexStart);
+            int end = GetByteOffsetForCharIndex(charIndexEnd);
+            if (end < start)
+                throw new ArgumentException("结束位置不能小于起始位置");
+
+            int oldRangeLen = end - start;
+            int newRangeLen = replacement.Length;
+            int newTotal = Length - oldRangeLen + newRangeLen;
+
+            EnsureCapacity(newTotal);
+
+            // 当新内容长度大于旧区间，则向后移动尾部数据
+            if (newRangeLen != oldRangeLen)
+            {
+                int tailLen = Length - end;
+                if (newRangeLen > oldRangeLen)
+                {
+                    int shift = newRangeLen - oldRangeLen;
+                    // 从尾部开始向后复制 shift 个字节
+                    for (int i = tailLen - 1; i >= 0; i--)
+                    {
+                        Ptr[end + i + shift] = Ptr[end + i];
+                    }
+                }
+                else // newRangeLen < oldRangeLen，则向前移动数据
+                {
+                    int shift = oldRangeLen - newRangeLen;
+                    for (int i = 0; i < (Length - end); i++)
+                    {
+                        Ptr[end - shift + i] = Ptr[end + i];
+                    }
+                }
+            }
+            // 将 replacement 数据复制到指定区间
+            for (int i = 0; i < newRangeLen; i++)
+            {
+                Ptr[start + i] = replacement.Ptr[i];
+            }
+
+            Length = newTotal;
+        }
+
+        /// <summary>
+        /// 保留字符串中满足 predicate 谓词的字符，其它字符删除。
+        /// predicate 的第一个参数为字符 Unicode 码点，第二个参数为字符索引（按字符计）。
+        /// </summary>
+        public void Retain(UnmanagedCharPredicate predicate)
+        {
+            int src = 0, dest = 0, charIndex = 0;
+            while (src < Length)
+            {
+                int cp;
+                int size = DecodeUtf8Char(Ptr + src, Length - src, out cp);
+                if (size == 0)
+                    throw new InvalidOperationException("Invalid UTF-8 sequence");
+                // 若 predicate 返回 true，则保留此字符（可能需要移动数据到 dest 位置）
+                if (predicate(cp, charIndex))
+                {
+                    if (src != dest)
+                    {
+                        // 拷贝 size 个字节
+                        for (int i = 0; i < size; i++)
+                        {
+                            Ptr[dest + i] = Ptr[src + i];
+                        }
+                    }
+                    dest += size;
+                }
+                // 无论保留与否均计数
+                src += size;
+                charIndex++;
+            }
+            Length = dest;
         }
     }
 }

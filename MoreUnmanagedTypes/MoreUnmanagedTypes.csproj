@@ -13,5 +13,7 @@
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	  <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
-
+	<ItemGroup>
+		<None Include="LICENSE" Pack="true" PackagePath="" />
+	</ItemGroup>
 </Project>
