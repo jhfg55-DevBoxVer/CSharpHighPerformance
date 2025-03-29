@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>13.0</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>MoreUnmanagedTypes</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>jhfg55</Authors>
+    <Company>jhfg55</Company>
+    <Description>A library for handling unmanaged UTF-8 strings in C#.</Description>
+    <PackageTags>UTF-8, Unmanaged, String</PackageTags>
+	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>
