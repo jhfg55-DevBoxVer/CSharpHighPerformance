@@ -11,6 +11,7 @@
     <Description>A set of unmanaged types designed to extend C# 's high-performance programming capabilities</Description>
     <PackageTags>UTF-8, Unmanaged, String, Types</PackageTags>
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	  <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 
 </Project>
