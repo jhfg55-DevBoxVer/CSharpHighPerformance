@@ -8,8 +8,8 @@
     <Version>1.0.0</Version>
     <Authors>jhfg55</Authors>
     <Company>jhfg55</Company>
-    <Description>A library for handling unmanaged UTF-8 strings in C#.</Description>
-    <PackageTags>UTF-8, Unmanaged, String</PackageTags>
+    <Description>A library for handling various unmanaged types in C#.</Description>
+    <PackageTags>UTF-8, Unmanaged, String, Types</PackageTags>
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

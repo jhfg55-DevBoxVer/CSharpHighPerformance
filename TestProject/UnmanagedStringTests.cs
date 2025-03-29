@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 [TestClass]
@@ -7,7 +7,7 @@ public unsafe class UnmanagedStringTests
     [TestMethod]
     public void ConstructorAndToStringTest()
     {
-        string test = "Hello, ÊÀ½ç!";
+        string test = "Hello, ä¸–ç•Œ!";
         UnmanagedString us = new UnmanagedString(test);
         try
         {
@@ -42,7 +42,7 @@ public unsafe class UnmanagedStringTests
     [TestMethod]
     public void CharCountTest()
     {
-        string test = "Hello, ÊÀ½ç!";
+        string test = "Hello, ä¸–ç•Œ!";
         UnmanagedString us = new UnmanagedString(test);
         try
         {
@@ -62,7 +62,7 @@ public unsafe class UnmanagedStringTests
         UnmanagedString us = new UnmanagedString(test);
         try
         {
-            // É¾³ıË÷Òı1´¦×Ö·û 'e'
+            // åˆ é™¤ç´¢å¼•1å¤„å­—ç¬¦ 'e'
             int removed = us.RemoveAt(1);
             Assert.AreEqual('e', removed);
             Assert.AreEqual("Hllo", us.ToString());
@@ -80,7 +80,7 @@ public unsafe class UnmanagedStringTests
         UnmanagedString us = new UnmanagedString(test);
         try
         {
-            // ÔÚË÷Òı1´¦²åÈë×Ö·û 'e'
+            // åœ¨ç´¢å¼•1å¤„æ’å…¥å­—ç¬¦ 'e'
             us.InsertAt(1, 'e');
             Assert.AreEqual("Hello", us.ToString());
         }
@@ -97,7 +97,7 @@ public unsafe class UnmanagedStringTests
         UnmanagedString us = new UnmanagedString(test);
         try
         {
-            // ÔÚË÷Òı4´¦²åÈë×Ö·û´® "o" Íê³É "Hello!"
+            // åœ¨ç´¢å¼•4å¤„æ’å…¥å­—ç¬¦ä¸² "o" å®Œæˆ "Hello!"
             us.InsertAt(4, "o");
             Assert.AreEqual("Hello!", us.ToString());
         }
@@ -110,7 +110,7 @@ public unsafe class UnmanagedStringTests
     [TestMethod]
     public void WithCapacityTest()
     {
-        // Ê¹ÓÃ WithCapacity ·½·¨´´½¨¾ß±¸Ô¤·ÖÅä¿Õ¼äµÄ UnmanagedString
+        // ä½¿ç”¨ WithCapacity æ–¹æ³•åˆ›å»ºå…·å¤‡é¢„åˆ†é…ç©ºé—´çš„ UnmanagedString
         UnmanagedString us = UnmanagedString.WithCapacity(100);
         try
         {
