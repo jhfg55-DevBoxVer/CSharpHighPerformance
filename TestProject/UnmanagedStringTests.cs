@@ -1,8 +1,7 @@
-﻿using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using MoreUnmanagedTypes;
 
 [TestClass]
-public unsafe class UnmanagedStringTests
+public class UnmanagedStringTests
 {
     [TestMethod]
     public void ConstructorAndToStringTest()
