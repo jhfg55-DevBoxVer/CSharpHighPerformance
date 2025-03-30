@@ -1,18 +1,19 @@
-�����г�һЩĿǰ��� UnmanagedString ʵ������� Rust �е� String���μ� string.rs����ȱ�ٵĹ��ܣ�
+﻿以下列出一些目前这个 UnmanagedString 实现相比于 Rust 中的 String（参见 string.rs）还缺少的功能：
 
-1. **�ḻ���ַ������� API**  
-   Rust �� String �ṩ�ܶ��ݵķ��������� `push_str`��`push`��`pop`��`insert`��`remove`��`split_off`��`drain`��`replace_range`��`retain` �ȣ���Ŀǰ�� UnmanagedString ʵ��ֻ�л����Ĺ�������ٲ�����ȱ�����ƵĶԵ����ַ������ַ����Ķ�̬������
+1. **丰富的字符串操作 API**  
+   Rust 的 String 提供很多便捷的方法，比如 `push_str`、`push`、`pop`、`insert`、`remove`、`split_off`、`drain`、`replace_range`、`retain` 等，而目前的 UnmanagedString 实现只有基础的构造和销毁操作，缺少类似的对单个字符或子字符串的动态操作。
 
-2. **������������**  
-   Rust �� String ֧�֡�Ԥ��������������ȷԤ�������������������ȷ��������� `reserve`��`reserve_exact`��`shrink_to_fit`��`shrink_to`���������Ż��ڴ���䡣Ŀǰ�� UnmanagedString ʵ��ȱ������ϸ���ȵ����������ӿڡ�
+2. **容量管理功能**  
+   Rust 的 String 支持“预留容量”、“精确预留”、“收缩容量”等方法（例如 `reserve`、`reserve_exact`、`shrink_to_fit`、`shrink_to`），便于优化内存分配。目前的 UnmanagedString 实现缺少这类细粒度的容量管理接口。
 
-3. **�ַ��߽����Ƭ����**  
-   Rust �� String ��Ϊ�ڲ�����Ϊ UTF-8 �ֽ����飬�ṩ�ϸ���ַ��߽������Ƭ����������������Χ��`is_char_boundary` ���ȣ���Ŀǰ UnmanagedString ����ֻ֧����򵥵ı߽��������ȱ������������Ƭ��������ȷ�� UTF-8 ��Ч�Ե� API��
+3. **字符边界和切片操作**  
+   Rust 的 String 因为内部储存为 UTF-8 字节数组，提供严格的字符边界检查和切片操作（例如索引范围、`is_char_boundary` 检查等）。目前 UnmanagedString 可能只支持最简单的边界管理，而缺少类似灵活的切片、索引并确保 UTF-8 有效性的 API。
 
-4. **���й��ַ����Ļ�ת**  
-   Rust �� String �� `&str`��`Cow<str>` ����������֮�������Ƶ�ת���� trait ʵ�֣��� Deref��FromIterator��ToString �ȣ����� UnmanagedString û���ṩ�� C# ���� System.String �������й��ַ�������֮����޷�ת�����ߡ�
+4. **与托管字符串的互转**  
+   Rust 的 String 与 `&str`、`Cow<str>` 及其它类型之间有完善的转换与 trait 实现（如 Deref、FromIterator、ToString 等）。
+   目前还需要注意以下几个方面：
+   •	错误处理与边界检查：目前没有对内存分配失败进行检测（例如 AllocHGlobal 返回 null 的情况），在极端条件下可能需要更严格的错误处理。
+•	性能优化：对于大字符串转换和频繁转换场景，可能有进一步优化空间（例如批量复制、减少循环体中的冗余计算等）。
 
-5. **��ʽ����Ƚϵ������֧��**  
-   Rust �� String ʵ���˷ḻ�� trait������ `PartialEq`��`Hash`��`Display`��`Debug`��`Add`��`AddAssign` �ȣ�ʹ���ַ��������͸�ʽ���ǳ����㡣��ǰ UnmanagedString ʵ����δ������Щ�ӿڣ�����Զ����ȫ�棩��
-
-�ܽ���˵��UnmanagedString Ŀǰ����һ��������ԭʼ UTF-8 �洢��װ�׶Σ���� Rust �� String ��ȱ�ٴ��������ճ�ʹ�õ� API��������ַ�����������̬������������Ƭ����ʽ���ͻ�ת֧�ֵȣ���
+5. **格式化与比较等运算符支持**  
+   Rust 的 String 实现了丰富的 trait，比如 `PartialEq`、`Hash`、`Display`、`Debug`、`Add`、`AddAssign` 等，使得字符串操作和格式化非常方便。当前 UnmanagedString 实现尚未看到这些接口（或者远不够全面）。

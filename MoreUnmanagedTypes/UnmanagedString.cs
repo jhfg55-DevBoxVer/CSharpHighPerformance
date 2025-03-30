@@ -27,9 +27,27 @@ namespace MoreUnmanagedTypes
             fixed (char* p = s)
             {
                 int offset = 0;
-                for (int i = 0; i < s.Length; i++)
+                int i = 0;
+                while (i < s.Length)
                 {
-                    offset += EncodeUtf8Char(p[i], Ptr + offset);
+                    char c = p[i];
+                    int codepoint;
+                    int encoded = 0;
+                    // 检查是否为代理对。虽然 UnmanagedString 最终存储的是 UTF-8 编码的数据，但 .NET 的字符串（System.String）本身是以 UTF-16 格式存储的，这意味着对于超过 BMP 的 Unicode 码点，会使用代理对（surrogate pairs）表示。在将 UTF-16 字符串转换为 UTF-8 时，必须正确处理这些代理对，以确保转换后生成的 UTF-8 数据是正确和完整的。如果不考虑代理对，可能会将高代理项和低代理项错误地分别当作单个字符处理，从而导致 UTF-8 编码数据不正确。
+
+                    if (char.IsHighSurrogate(c) && i + 1 < s.Length && char.IsLowSurrogate(p[i + 1]))
+                    {
+                        codepoint = char.ConvertToUtf32(c, p[i + 1]);
+                        encoded = EncodeUtf8Codepoint(codepoint, Ptr + offset);
+                        i += 2;
+                    }
+                    else
+                    {
+                        codepoint = c;
+                        encoded = EncodeUtf8Codepoint(codepoint, Ptr + offset);
+                        i++;
+                    }
+                    offset += encoded;
                 }
             }
         }
@@ -74,6 +92,68 @@ namespace MoreUnmanagedTypes
             }
         }
 
+        /// <summary>
+        /// 为当前字符串预留额外的空间，使总容量达到至少 Length + additional。
+        /// 如果当前容量不足，则采用增长策略扩容。
+        /// </summary>
+        public void Reserve(int additional)
+        {
+            int required = Length + additional;
+            if (required > Capacity)
+            {
+                EnsureCapacity(required);
+            }
+        }
+
+        /// <summary>
+        /// 精确地为当前字符串预留额外的空间，使总容量恰好为 Length + additional。
+        /// 不采用过度分配策略，而是直接分配所需大小的内存块。
+        /// </summary>
+        public void ReserveExact(int additional)
+        {
+            int required = Length + additional;
+            if (required > Capacity)
+            {
+                byte* newPtr = (byte*)Marshal.AllocHGlobal(required);
+                // 复制现有数据到新内存；这里 required 作为新缓冲区大小，
+                // 只复制 Length 个字节即可
+                Buffer.MemoryCopy(Ptr, newPtr, required, Length);
+                if (Ptr != null)
+                    Marshal.FreeHGlobal((IntPtr)Ptr);
+                Ptr = newPtr;
+                Capacity = required;
+            }
+        }
+
+        /// <summary>
+        /// 收缩当前字符串的容量至实际数据长度，释放多余的空间。
+        /// 如果字符串为空，则释放内存并将 Ptr 置为 null。
+        /// </summary>
+        public void ShrinkToFit()
+        {
+            if (Length < Capacity)
+            {
+                if (Length == 0)
+                {
+                    if (Ptr != null)
+                    {
+                        Marshal.FreeHGlobal((IntPtr)Ptr);
+                        Ptr = null;
+                    }
+                    Capacity = 0;
+                }
+                else
+                {
+                    byte* newPtr = (byte*)Marshal.AllocHGlobal(Length);
+                    Buffer.MemoryCopy(Ptr, newPtr, Length, Length);
+                    Marshal.FreeHGlobal((IntPtr)Ptr);
+                    Ptr = newPtr;
+                    Capacity = Length;
+                }
+            }
+        }
+
+
         public bool IsCharBoundary(int index)
         {
             if (index == 0 || index == Length)
@@ -81,43 +161,70 @@ namespace MoreUnmanagedTypes
             return (Ptr[index] & 0xC0) != 0x80;
         }
 
+        // 更新后的计算 UTF-8 字节数（支持代理对）
         private static int Utf8ByteCount(string s)
         {
             int count = 0;
-            for (int i = 0; i < s.Length; i++)
+            int i = 0;
+            while (i < s.Length)
             {
                 char c = s[i];
-                if (c < 0x80)
-                    count += 1;
-                else if (c < 0x800)
-                    count += 2;
+                int codepoint;
+                if (char.IsHighSurrogate(c) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))
+                {
+                    codepoint = char.ConvertToUtf32(c, s[i + 1]);
+                    i += 2;
+                }
                 else
-                    count += 3; // 简化处理，忽略代理对
+                {
+                    codepoint = c;
+                    i++;
+                }
+                if (codepoint < 0x80)
+                    count += 1;
+                else if (codepoint < 0x800)
+                    count += 2;
+                else if (codepoint < 0x10000)
+                    count += 3;
+                else
+                    count += 4;
             }
             return count;
         }
 
-        private static int EncodeUtf8Char(char c, byte* dest)
+        // 新增：根据 Unicode 码点编码为 UTF-8（支持代理对）
+        private static int EncodeUtf8Codepoint(int codepoint, byte* dest)
         {
-            if (c < 0x80)
+            if (codepoint < 0x80)
             {
-                dest[0] = (byte)c;
+                dest[0] = (byte)codepoint;
                 return 1;
             }
-            else if (c < 0x800)
+            else if (codepoint < 0x800)
             {
-                dest[0] = (byte)(0xC0 | (c >> 6));
-                dest[1] = (byte)(0x80 | (c & 0x3F));
+                dest[0] = (byte)(0xC0 | (codepoint >> 6));
+                dest[1] = (byte)(0x80 | (codepoint & 0x3F));
                 return 2;
+            }
+            else if (codepoint < 0x10000)
+            {
+                dest[0] = (byte)(0xE0 | (codepoint >> 12));
+                dest[1] = (byte)(0x80 | ((codepoint >> 6) & 0x3F));
+                dest[2] = (byte)(0x80 | (codepoint & 0x3F));
+                return 3;
             }
             else
             {
-                dest[0] = (byte)(0xE0 | (c >> 12));
-                dest[1] = (byte)(0x80 | ((c >> 6) & 0x3F));
-                dest[2] = (byte)(0x80 | (c & 0x3F));
-                return 3;
+                dest[0] = (byte)(0xF0 | (codepoint >> 18));
+                dest[1] = (byte)(0x80 | ((codepoint >> 12) & 0x3F));
+                dest[2] = (byte)(0x80 | ((codepoint >> 6) & 0x3F));
+                dest[3] = (byte)(0x80 | (codepoint & 0x3F));
+                return 4;
             }
         }
+
+        // 旧的编码方法直接委托到新的方法（保证向后兼容）
+        private static int EncodeUtf8Char(char c, byte* dest) => EncodeUtf8Codepoint(c, dest);
 
         private static int DecodeUtf8Char(byte* ptr, int remaining, out int codepoint)
         {
@@ -264,7 +371,7 @@ namespace MoreUnmanagedTypes
         {
             int insertPos = GetByteOffsetForCharIndex(charIndex);
             byte* tmp = stackalloc byte[4];
-            int encoded = EncodeUtf8Char(c, tmp);
+            int encoded = EncodeUtf8Codepoint(c, tmp);
 
             int newLength = Length + encoded;
             EnsureCapacity(newLength);
@@ -274,6 +381,7 @@ namespace MoreUnmanagedTypes
             Length = newLength;
         }
 
+        // 更新后的 InsertAt 处理字符串中的代理对
         public void InsertAt(int charIndex, string s)
         {
             if (s == null)
@@ -284,11 +392,27 @@ namespace MoreUnmanagedTypes
             EnsureCapacity(newLength);
             Buffer.MemoryCopy(Ptr + insertPos, Ptr + insertPos + addBytes, Capacity - (insertPos + addBytes), Length - insertPos);
             int offset = insertPos;
+            int i = 0;
             fixed (char* ps = s)
             {
-                for (int i = 0; i < s.Length; i++)
+                while (i < s.Length)
                 {
-                    offset += EncodeUtf8Char(ps[i], Ptr + offset);
+                    char c = ps[i];
+                    int codepoint;
+                    int encoded;
+                    if (char.IsHighSurrogate(c) && i + 1 < s.Length && char.IsLowSurrogate(ps[i + 1]))
+                    {
+                        codepoint = char.ConvertToUtf32(c, ps[i + 1]);
+                        encoded = EncodeUtf8Codepoint(codepoint, Ptr + offset);
+                        i += 2;
+                    }
+                    else
+                    {
+                        codepoint = c;
+                        encoded = EncodeUtf8Codepoint(codepoint, Ptr + offset);
+                        i++;
+                    }
+                    offset += encoded;
                 }
             }
             Length = newLength;
@@ -334,8 +458,8 @@ namespace MoreUnmanagedTypes
         /// <returns>指向 UTF-16 字符数据的指针</returns>
         public IntPtr ToUtf16(out int charCount)
         {
-            // 此实现假设 UnmanagedString 仅存储 BMP 字符（最多 3 字节编码）
-            int count = 0;
+            // 第一遍：计算转换后所需的 UTF-16 字符总个数
+            int required = 0;
             int pos = 0;
             while (pos < Length)
             {
@@ -344,20 +468,35 @@ namespace MoreUnmanagedTypes
                 if (size == 0)
                     throw new InvalidOperationException("Invalid UTF-8 sequence");
                 pos += size;
-                count++;
+                // 对于 BMP 内的字符，一个字符；对于补充字符，需要两个 UTF-16 字符（代理对）
+                required += (cp < 0x10000) ? 1 : 2;
             }
-            charCount = count;
-            IntPtr utf16Ptr = Marshal.AllocHGlobal(count * sizeof(char));
+            charCount = required;
+            // 分配转换后的 UTF-16 缓冲区
+            IntPtr utf16Ptr = Marshal.AllocHGlobal(required * sizeof(char));
             char* dest = (char*)utf16Ptr;
+
+            // 第二遍：进行实际转换
             pos = 0;
             int index = 0;
-            while (pos < Length && index < count)
+            while (pos < Length)
             {
                 int cp;
                 int size = DecodeUtf8Char(Ptr + pos, Length - pos, out cp);
+                if (size == 0)
+                    throw new InvalidOperationException("Invalid UTF-8 sequence");
                 pos += size;
-                // 此处不处理需要代理对的情况
-                dest[index++] = (char)cp;
+                if (cp < 0x10000)
+                {
+                    dest[index++] = (char)cp;
+                }
+                else
+                {
+                    // 需要生成代理对
+                    cp -= 0x10000;
+                    dest[index++] = (char)(0xD800 | (cp >> 10));     // 高代理项
+                    dest[index++] = (char)(0xDC00 | (cp & 0x3FF));     // 低代理项
+                }
             }
             return utf16Ptr;
         }
