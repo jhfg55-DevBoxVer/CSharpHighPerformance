@@ -1,222 +1,349 @@
----
-
-**Overview of UnmanagedString**  
-`UnmanagedString` is a structure used to store UTF-8 encoded strings in unmanaged memory. This structure not only supports construction and conversion from managed strings, but also provides methods for inserting, deleting characters, and a custom enumerator for iterating over UTF-8 characters in the string.  
-Its main fields include:  
-- `Ptr`: Points to the starting address of the UTF-8 data stored in the allocated unmanaged memory.  
-- `Length`: The current number of bytes occupied by the string.  
-- `Capacity`: The total allocated byte capacity.
 
 ---
 
-**Main Constructors and Factory Methods**
+# UnmanagedString Documentation
 
-1. **Constructor `UnmanagedString(string s)`**  
-   - **Functionality**: Constructs an instance of `UnmanagedString` from a managed string `s`.  
-   - **Process**: Computes the number of bytes required for the UTF-8 encoding of the string, allocates the corresponding unmanaged memory, and encodes each character into UTF-8, storing the result in the allocated memory.  
-   - **Note**: Throws an `ArgumentNullException` if the input string is `null`.
-
-2. **Static Factory Method `New()`**  
-   - **Functionality**: Returns an initialized `UnmanagedString` instance that is empty and has no allocated memory.
-
-3. **Static Factory Method `WithCapacity(int capacity)`**  
-   - **Functionality**: Creates an instance of `UnmanagedString` with a specified pre-allocated capacity.  
-   - **Parameter Check**: Throws an `ArgumentOutOfRangeException` if `capacity` is less than 0.
+This document introduces the `UnmanagedString` struct and its associated functionality in the `MoreUnmanagedTypes` namespace. The struct is designed for storing and manipulating string data in unmanaged memory using UTF-8 encoding. It provides common string manipulation methods, a character enumerator, and conversion between unmanaged and managed strings.
 
 ---
 
-**Memory Management Methods**
+## Basic Structure
 
-1. **`Free()`**  
-   - **Functionality**: Frees the allocated unmanaged memory and resets the relevant fields (`Ptr`, `Length`, and `Capacity`).
+- **Fields**
+  - `byte* Ptr`  
+    Points to the beginning of the UTF-8 encoded data in unmanaged memory.
+  - `int Length`  
+    The current length in bytes of the string (i.e., the length of the valid data).
+  - `int Capacity`  
+    The total allocated number of bytes, indicating the available memory capacity.
 
-2. **`EnsureCapacity(int required)`**  
-   - **Functionality**: Ensures that the string has enough memory to store at least `required` bytes. If not, new memory is allocated; the existing data is copied over to the new allocation, and the old memory is freed.  
-   - **Expansion Strategy**: If the initial capacity is insufficient and `Capacity` is 0, it allocates a default of 8 bytes; otherwise, the capacity is doubled.
-
----
-
-**UTF-8 Encoding and Decoding Support**
-
-1. **`Utf8ByteCount(string s)`**  
-   - **Functionality**: Returns the number of bytes required to encode the string `s` in UTF-8.  
-   - **Simplification**: Surrogate pairs are not handled separately; only basic multilingual characters are accounted for.
-
-2. **`EncodeUtf8Char(char c, byte* dest)`**  
-   - **Functionality**: Encodes a single character `c` into UTF-8 and writes it to the target address `dest`.  
-   - **Return Value**: The number of bytes used to encode the character.  
-   - **Logic**: Chooses the appropriate number of UTF-8 bytes based on the character's encoding range (ASCII, extended Unicode, etc.).
-
-3. **`DecodeUtf8Char(byte* ptr, int remaining, out int codepoint)`**  
-   - **Functionality**: Decodes the UTF-8 byte stream starting at the specified address, returning the decoded Unicode code point and the number of bytes consumed during decoding.  
-   - **Checks**: If the available data is insufficient or the byte sequence is invalid, it returns 0 and sets `codepoint` to 0.
+- **Constructors and Static Factory Methods**
+  - `UnmanagedString(string s)`  
+    Constructs an `UnmanagedString` from a given C# string. It encodes the string in UTF-8 and allocates the corresponding unmanaged memory.
+  - `static UnmanagedString New()`  
+    Returns an empty `UnmanagedString` (with default field values).
+  - `static UnmanagedString WithCapacity(int capacity)`  
+    Creates an `UnmanagedString` with the specified capacity and allocates unmanaged memory of the given size. When the capacity is 0, `Ptr` is set to `null`.
 
 ---
 
-**Character Enumeration and Counting**
+## Memory Management
 
-1. **Property `CharValues`**  
-   - **Functionality**: Returns a custom enumerator instance for iterating over the UTF-8 encoded characters (represented as Unicode code points) in the string.
+- `void Free()`  
+  Releases the unmanaged memory occupied by the instance and resets the relevant fields to their default values.
 
-2. **Internal Structures `CharEnumerable` and `CharEnumerator`**  
-   - `CharEnumerable` implements the `IEnumerable<int>` interface, allowing the use of a `foreach` loop to iterate over the Unicode values of each character in the string.  
-   - `CharEnumerator` implements `IEnumerator<int>`, encapsulating the logic for iteration by decoding characters, updating the position until the end of the string is reached.  
-   - **Note**: If an invalid UTF-8 sequence is encountered, an `InvalidOperationException` is thrown.
-
-3. **`CharCount()` Method**  
-   - **Functionality**: Counts the number of characters in the string by decoding the entire UTF-8 byte array.  
-   - **Process**: Decodes the byte array step by step, incrementing the count for each decoded character until all bytes are processed.  
-   - **Error Handling**: Throws an `InvalidOperationException` if an invalid UTF-8 sequence is encountered during decoding.
+- `void EnsureCapacity(int required)`  
+  Checks the current capacity; if insufficient, reallocates memory using a strategy (doubling the capacity or extending directly when needed) and copies the existing data.
 
 ---
 
-**String Insertion and Deletion Operations**
+## Character Encoding and Decoding
 
-1. **`RemoveAt(int charIndex)`**  
-   - **Functionality**: Removes the character at the specified character index from the string.  
-   - **Process**:  
-     - Translates the character index to a byte offset using the decoding process.  
-     - Uses `DecodeUtf8Char` to determine the number of UTF-8 bytes representing the character to be removed.  
-   - **Operation**: After deletion, the remaining bytes are moved using `Buffer.MemoryCopy` to cover the removed character's space, and `Length` is updated.  
-   - **Return Value**: The Unicode code point of the deleted character.  
-   - **Error Handling**: Throws an appropriate exception if the index is invalid or an invalid UTF-8 sequence is encountered.
+Internally, UTF-8 encoding is used for storage. The conversion methods include:
 
-2. **`InsertAt(int charIndex, char c)` and `InsertAt(int charIndex, string s)`**  
-   - **Functionality**: Inserts a character or a string at the specified character index.  
-   - **Process**:  
-     - First, determines the byte offset for the insertion point using `GetByteOffsetForCharIndex`.  
-     - Encodes the content to be inserted into UTF-8 (a single character is at most 4 bytes, while a string is encoded character by character).  
-     - Ensures that the memory has enough capacity for the new data (calls `EnsureCapacity`).  
-     - Uses `Buffer.MemoryCopy` to move the subsequent existing bytes to make room for the new data, then copies the newly encoded bytes into place.  
-   - **Final Step**: Updates `Length`.
+- `private static int Utf8ByteCount(string s)`  
+  Calculates the number of bytes required to encode a string in UTF-8 (ignores surrogate pairs).
 
-3. **Helper Method `GetByteOffsetForCharIndex(int charIndex)`**  
-   - **Functionality**: Converts a character index to its corresponding byte offset within the unmanaged memory.  
-   - **Process**: Iteratively decodes UTF-8 bytes until the desired character position is reached.
+- `private static int EncodeUtf8Char(char c, byte* dest)`  
+  Encodes a single character in UTF-8, writes it to the destination memory, and returns the number of bytes used.
+
+- `private static int DecodeUtf8Char(byte* ptr, int remaining, out int codepoint)`  
+  Decodes the next UTF-8 character from the current buffer, returning the Unicode codepoint and the number of bytes occupied. It supports single-byte as well as multi-byte (2-4 bytes) encodings.
 
 ---
 
-**Overridden `ToString()` Method**
+## Character Enumeration and Counting
 
-- **Functionality**: Converts the UTF-8 byte array stored in unmanaged memory into a managed string.  
-- **Process**: Copies the unmanaged memory data into a managed byte array and then converts it using `System.Text.Encoding.UTF8.GetString`.  
-- **Special Case**: Returns an empty string if `Length` is 0.
+- **Character Enumerator**
+  - The `CharEnumerable CharValues` property returns an enumerable character iterator. This iterator implements `IEnumerable<int>` and returns a Unicode codepoint on each iteration.
 
----
-
-**Summary**  
-This file implements an unmanaged string container, `UnmanagedString`, which encapsulates manual memory management and UTF-8 encoding/decoding. It provides interfaces for constructing, iterating, modifying, inserting, and deleting operations on strings, suitable for scenarios requiring low-level string manipulation and custom encoding control. Exception handling is integrated to promptly alert the caller when invalid input parameters or memory issues occur.
+- `int CharCount()`  
+  Iterates over all bytes, decodes them, and counts the total number of characters (by Unicode codepoints).
 
 ---
 
+## Character Operations
+
+- `int RemoveAt(int charIndex)`  
+  Removes the character at the given character index (based on the decoded order), shifts the following bytes to close the gap, and returns the Unicode codepoint of the removed character.
+
+- `void InsertAt(int charIndex, char c)`  
+  Inserts a character at the specified character index. It first determines the byte offset, then moves the required bytes (to ensure contiguous memory) and finally writes the UTF-8 encoded form of the character.
+
+- `void InsertAt(int charIndex, string s)`  
+  Inserts a string at the specified character index. The principle is similar to single-character insertion and involves calculating the byte length of the inserted content.
+
+- `int GetByteOffsetForCharIndex(int charIndex)`  
+  An internal method that calculates the corresponding byte offset for a given character index. It is used for character positioning.
+
+- `void Push(char c)`  
+  Appends a character to the end of the string, equivalent to inserting at the tail.
+
+- `void PushStr(string s)`  
+  Appends a string to the end of the string.
+
+- `UnmanagedString SplitOff(int charIndex)`  
+  Splits the original string into two parts at the specified character index. The latter part is separated and returned as a new `UnmanagedString`, and the length of the original string is updated to that of the front portion.
+
+- `UnmanagedString Drain(int charIndexStart, int charIndexEnd)`  
+  Removes all characters in the specified range of character indices and returns the removed portion as a new `UnmanagedString`. The original string data is adjusted by moving subsequent data to fill the gap.
+
+- `void ReplaceRange(int charIndexStart, int charIndexEnd, UnmanagedString replacement)`  
+  Replaces the characters in the specified range with a new `UnmanagedString`. This operation may involve extending the memory or moving data to accommodate the length changes.
+
+- `void Retain(UnmanagedCharPredicate predicate)`  
+  Filters and retains characters based on the provided unmanaged character predicate (`UnmanagedCharPredicate`). It iterates through all characters, keeping those for which the predicate returns `true` and removing the others, adjusting the data accordingly.
+
+---
+
+## Encoding Conversion and Debugging
+
+- `IntPtr ToUtf16(out int charCount)`  
+  Converts the internally stored UTF-8 data to a UTF-16 (unmanaged memory) representation and returns the pointer to the converted memory. The caller is responsible for eventually freeing the returned memory (using `Marshal.FreeHGlobal`). This method assumes only BMP characters are handled (i.e., surrogate pairs are not processed).
+
+- `public override string ToString()`  
+  Used for debugging, it internally calls `ToUtf16` to create a new managed string and returns a debug-friendly string representation. It is recommended not to use this conversion in high-performance scenarios.
+
+---
+
+## Interface Implementations and Operator Overloads
+
+- **IEquatable and IComparable**
+  - Overrides the `Equals` method, using a byte-by-byte comparison to determine if the string contents are equal.
+  - Overrides the `GetHashCode` method, generating a hash code based on the FNV-1a algorithm using the character data.
+  - Implements the `IComparable<UnmanagedString>` interface, comparing byte by byte in lexicographical order.
+
+- **Operator Overloads**
+  - Overloads the `==`, `!=`, `<`, `>`, `<=`, and `>=` operators, utilizing the corresponding interface implementations to enable intuitive comparison operations.
+
+---
+
+## Usage Example
+
+
+```csharp
+using System;
+using MoreUnmanagedTypes;
+
+class Program
+{
+    static unsafe void Main()
+    {
+        // Construct an UnmanagedString
+        UnmanagedString ustr = new UnmanagedString("Hello, 世界");
+        Console.WriteLine(ustr.ToString()); // Outputs a managed string for debugging purposes
+
+        // Append a character and a string
+        ustr.Push('!');
+        ustr.PushStr(" Additional content");
+
+        // Count the characters
+        int count = ustr.CharCount();
+        Console.WriteLine($"Character Count: {count}");
+
+        // Remove the second character
+        int removedCp = ustr.RemoveAt(1);
+        Console.WriteLine($"Removed Character Codepoint: {removedCp}");
+
+        // Retain only ASCII characters (example: only keep characters with codepoint less than 128)
+        ustr.Retain((int cp, int index) => cp < 128);
+
+        Console.WriteLine($"After Filtering: {ustr.ToString()}");
+
+        // Release unmanaged memory
+        ustr.Free();
+    }
+}
+
+```
+
+---
+
+## Caution
+
+- **Memory Management**  
+  Since all data is stored in unmanaged memory, be sure to call `Free()` to release the resources and avoid memory leaks.
+
+- **Character Encoding Limitations**  
+  The current implementation supports basic UTF-8 encoding and decoding and does not fully support surrogate pairs (handling only BMP characters). Extensions may be necessary for a broader range of characters.
+
+- **Performance**  
+  Some methods may encounter performance bottlenecks when copying large amounts of data, so be mindful of efficiency in scenarios with extensive data.
+
+---
 
 
 
 ---
 
-**UnmanagedString 概述**  
-`UnmanagedString` 是一个用于在非托管内存中保存 UTF-8 编码字符串的结构体。该结构不仅支持通过托管字符串构造和转换，还提供了插入、删除字符的方法以及自定义的枚举器以遍历字符串中的 UTF-8 字符。  
-其主要字段包括：  
-- `Ptr`: 指向分配内存中保存 UTF-8 数据的起始地址。  
-- `Length`: 当前字符串占用的字节数。  
-- `Capacity`: 当前分配的总字节空间大小。
+# UnmanagedString 文档
+
+该文档介绍位于命名空间 `MoreUnmanagedTypes` 中的 `UnmanagedString` 结构体及其相关功能。该结构体用于在非托管内存中以 UTF-8 编码形式存储和操作字符串数据，同时提供了常用的字符串操作方法、字符迭代器以及与托管字符串之间的转换。
 
 ---
 
-**主要构造函数与工厂方法**
+## 基本结构
 
-1. **构造函数 `UnmanagedString(string s)`**  
-   - 功能：以托管字符串 `s` 构造 `UnmanagedString` 实例。  
-   - 过程：计算字符串的 UTF-8 字节数，分配相应的非托管内存，并逐字符进行 UTF-8 编码存储到分配好的内存中。  
-   - 注意：字符串为 `null` 时会抛出 `ArgumentNullException`。
+- **字段**
+  - `byte* Ptr`  
+    指向非托管内存中存储 UTF-8 数据的起始地址。
+  - `int Length`  
+    当前字符串的字节长度（有效数据长度）。
+  - `int Capacity`  
+    当前已分配的总字节数，表示可用的内存容量。
 
-2. **静态工厂方法 `New()`**  
-   - 功能：返回一个初始化为空、无分配内存的 `UnmanagedString` 实例。
-
-3. **静态工厂方法 `WithCapacity(int capacity)`**  
-   - 功能：创建一个具有指定预分配容量的 `UnmanagedString` 实例。  
-   - 参数检查：当 `capacity` 小于 0 时抛出 `ArgumentOutOfRangeException`。
-
----
-
-**内存管理方法**
-
-1. **`Free()`**  
-   - 功能：释放分配的非托管内存，并重置相关字段（`Ptr`、`Length`、`Capacity`）。
-
-2. **`EnsureCapacity(int required)`**  
-   - 功能：确保字符串具备足够的内存存储至少 `required` 字节。如不足则分配新的内存，将原有数据复制过去，并释放原有内存。  
-   - 扩展策略：初始容量不足时，若 `Capacity` 为 0，默认分配 8 字节；否则以倍数扩展容量。
+- **构造函数与静态工厂方法**
+  - `UnmanagedString(string s)`  
+    根据给定的 C# 字符串构造 UnmanagedString，对字符串进行 UTF-8 编码并分配相应的非托管内存。
+  - `static UnmanagedString New()`  
+    返回一个空的 UnmanagedString（所有值均为默认）。
+  - `static UnmanagedString WithCapacity(int capacity)`  
+    根据指定的容量创建一个 UnmanagedString，并分配相应大小的非托管内存。容量为 0 时 `Ptr` 为 `null`。
 
 ---
 
-**UTF-8 编码与解码支持**
+## 内存管理
 
-1. **`Utf8ByteCount(string s)`**  
-   - 功能：返回字符串 `s` 经过 UTF-8 编码后所需的字节数。  
-   - 简化处理：代理对未单独处理，仅对基本多语言字符进行处理。
+- `void Free()`  
+  释放当前实例占用的非托管内存，并将相关字段重置为默认值。
 
-2. **`EncodeUtf8Char(char c, byte* dest)`**  
-   - 功能：将单个字符 `c` 编码为 UTF-8，并写入目标地址 `dest` 中。  
-   - 返回值：编码该字符所占字节数。  
-   - 处理逻辑：依据字符编码范围（ASCII、扩展 Unicode 等）选择对应的 UTF-8 编码字节数。
-
-3. **`DecodeUtf8Char(byte* ptr, int remaining, out int codepoint)`**  
-   - 功能：从指定地址开始解码 UTF-8 字节流，返回解析出的 Unicode 代码点，并返回解析消耗的字节数。  
-   - 检查：若数据不足或者字节序列不正确，则返回 0 并设置 `codepoint` 为 0。
+- `void EnsureCapacity(int required)`  
+  检查当前容量，如不足则按一定策略（先翻倍，必要时直接扩展）重新分配内存，并拷贝原有数据。
 
 ---
 
-**字符遍历和计数**
+## 字符编码与解码
 
-1. **属性 `CharValues`**  
-   - 功能：返回一个用于枚举字符串中 UTF-8 编码字符（以 Unicode 代码点表示）的自定义枚举器实例。
+内部使用 UTF-8 编码进行存储，对字符的转换方法包括：
 
-2. **内部结构体 `CharEnumerable` 与 `CharEnumerator`**  
-   - `CharEnumerable` 实现了 `IEnumerable<int>` 接口，允许使用 foreach 循环遍历字符串中每个字符的 Unicode 值。  
-   - `CharEnumerator` 实现了 `IEnumerator<int>`，封装了遍历逻辑：从当前字符开始解码，更新位置，直至超出字符串长度。  
-   - 注意：当遇到非法的 UTF-8 序列时将抛出 `InvalidOperationException`。
+- `private static int Utf8ByteCount(string s)`  
+  计算字符串根据 UTF-8 编码需要的字节数（不处理代理对）。
 
-3. **`CharCount()` 方法**  
-   - 功能：通过解码整个 UTF-8 字节数组来计算字符串中的字符数量。  
-   - 过程：逐字节解码，每解码一次计数加 1，直到遍历完所有字节。  
-   - 错误处理：如果途中遇到非法 UTF-8 序列，会抛出 `InvalidOperationException`。
+- `private static int EncodeUtf8Char(char c, byte* dest)`  
+  将单个字符转换为 UTF-8 编码，写入目标内存，并返回编码所占用的字节数。
+
+- `private static int DecodeUtf8Char(byte* ptr, int remaining, out int codepoint)`  
+  从当前缓冲区解码下一个 UTF-8 字符，返回该字符的码点以及占用的字节数。支持单字节、多字节(2-4字节)的字符编码。
 
 ---
 
-**字符串插入与删除操作**
+## 字符迭代与统计
 
-1. **`RemoveAt(int charIndex)`**  
-   - 功能：移除字符串中指定位置（基于字符索引）的字符。  
-   - 过程：先将字符索引转换为字节偏移，然后利用 `DecodeUtf8Char` 得到该字符占用的 UTF-8 字节数。  
-   - 操作：删除目标字符后，剩余字节通过 `Buffer.MemoryCopy` 移动至删除位置。最终更新 `Length`。  
-   - 返回值：被删除字符的 Unicode 代码点。  
-   - 错误处理：非法索引或 UTF-8 序列错误均会抛出相应异常。
+- **字符枚举器**
+  - `CharEnumerable CharValues` 属性返回一个可枚举的字符迭代器。该迭代器实现了 `IEnumerable<int>`，每次迭代返回一个 Unicode 码点。
 
-2. **`InsertAt(int charIndex, char c)` 与 `InsertAt(int charIndex, string s)`**  
-   - 功能：将字符或字符串插入到指定字符索引位置。  
-   - 过程：  
-     - 先通过 `GetByteOffsetForCharIndex` 方法获取字节偏移位置。  
-     - 对插入内容进行 UTF-8 编码（单字符最多 4 字节，多字符时依次编码）。  
-     - 为新数据扩容内存（调用 `EnsureCapacity`）。  
-     - 使用 `Buffer.MemoryCopy` 移动插入位置后余下的字节，并将新编码数据复制进来。  
-   - 最终更新 `Length`。
-
-3. **辅助方法 `GetByteOffsetForCharIndex(int charIndex)`**  
-   - 功能：将字符索引转换为在非托管内存中对应的字节偏移。  
-   - 过程：逐步解码 UTF-8 字节直到达到指定字符位置。
+- `int CharCount()`  
+  遍历所有字节，解码统计字符的总个数（以 Unicode 码点计）。
 
 ---
 
-**重写的 `ToString()` 方法**
+## 字符操作
 
-- 功能：将存储在非托管内存中的 UTF-8 字节数组转换为托管字符串。  
-- 过程：先将非托管内存数据复制到一个字节数组中，再利用 `System.Text.Encoding.UTF8.GetString` 进行转换。  
-- 特例：当长度为 0 时返回空字符串。
+- `int RemoveAt(int charIndex)`  
+  根据字符索引（按解码后字符顺序）删除对应字符，移动后续字节填补空缺，并返回被删除字符的 Unicode 码点。
+
+- `void InsertAt(int charIndex, char c)`  
+  在指定字符索引处插入一个字符。先确定字节偏移，再移动字节数据（保证内存连续性），最后写入新字符的 UTF-8 编码。
+
+- `void InsertAt(int charIndex, string s)`  
+  在指定字符索引处插入一段字符串，原理与单字符插入类似，会计算插入内容的字节长度。
+
+- `int GetByteOffsetForCharIndex(int charIndex)`  
+  内部方法，根据字符索引计算对应的字节偏移量。用于对字符定位。
+
+- `void Push(char c)`  
+  将字符追加到字符串尾部，等同于在末尾插入。
+
+- `void PushStr(string s)`  
+  将字符串追加到字符串尾部。
+
+- `UnmanagedString SplitOff(int charIndex)`  
+  以字符索引为界，将原字符串分为前半部分和后半部分。后半部分被分离出来作为新的 UnmanagedString，原字符串长度更新为前半部分。
+
+- `UnmanagedString Drain(int charIndexStart, int charIndexEnd)`  
+  删除指定字符索引范围内的字符，并以新的 UnmanagedString 返回被删除部分的内容，同时原字符串数据会自动移动填补删除的部分。
+
+- `void ReplaceRange(int charIndexStart, int charIndexEnd, UnmanagedString replacement)`  
+  用新的 UnmanagedString 替换指定区间内字符。涉及内存扩展或数据移动以适应替换后的数据长度变化。
+
+- `void Retain(UnmanagedCharPredicate predicate)`  
+  根据传入的非托管字符谓词（`UnmanagedCharPredicate`）过滤保留字符。遍历所有字符，如果谓词返回 `true` 则保留，否则删除，相应数据会被移动整理。
 
 ---
 
-**总结**  
-该文件实现了一个非托管字符串容器 `UnmanagedString`，通过手动管理内存和 UTF-8 编解码，对内存操作进行封装，提供了构造、遍历、修改、插入、删除等多种操作接口，适合用于需要对字符串进行低级别操作以及自定义编码控制的场景。异常处理方面主要保证了当输入参数不合法或内存状态发生错误时能及时抛出异常提示调用者。
+## 编码转换与调试
+
+- `IntPtr ToUtf16(out int charCount)`  
+  将内部存储的 UTF-8 数据转换为 UTF-16（非托管内存）表示，并返回转换后的内存指针。调用者需要负责最终释放返回的内存（通过 `Marshal.FreeHGlobal`）。此方法假设只处理 BMP 范围内的字符（不处理代理对）。
+
+- `public override string ToString()`  
+  用于调试，通过内部调用 `ToUtf16` 构建新的托管字符串，返回调试友好的字符串形式。对于高性能场景不建议使用该转换。
 
 ---
+
+## 接口实现和运算符重载
+
+- **IEquatable 与 IComparable**
+  - 重写 `Equals` 方法，采用逐字节比较方式判断字符串内容是否一致。
+  - 重写 `GetHashCode` 方法，基于 FNV-1a 算法生成字符数据的哈希码。
+  - 实现 `IComparable<UnmanagedString>` 接口，采用字节逐一比较（字典序比较）。
+
+- **运算符重载**
+  - 重载了 `==`、`!=`、`<`、`>`、`<=`、`>=` 运算符，调用对应的接口实现支持直观的比较操作。
+
+---
+
+## 使用示例
+
+
+```csharp
+using System;
+using MoreUnmanagedTypes;
+
+class Program
+{
+    static unsafe void Main()
+    {
+        // 构造 UnmanagedString
+        UnmanagedString ustr = new UnmanagedString("Hello, 世界");
+        Console.WriteLine(ustr.ToString()); // 输出保留调试用途的托管字符串
+
+        // 追加字符和字符串
+        ustr.Push('!');
+        ustr.PushStr(" 追加内容");
+
+        // 按字符计数
+        int count = ustr.CharCount();
+        Console.WriteLine($"字符数: {count}");
+
+        // 移除第二个字符
+        int removedCp = ustr.RemoveAt(1);
+        Console.WriteLine($"移除的字符码点: {removedCp}");
+
+        // 根据谓词保留大写字母（例子：仅保留 ASCII 字符小于 128 的字符）
+        ustr.Retain((int cp, int index) => cp < 128);
+
+        Console.WriteLine($"过滤后: {ustr.ToString()}");
+
+        // 释放非托管内存
+        ustr.Free();
+    }
+}
+
+```
+
+---
+
+## 注意事项
+
+- **内存管理**  
+  由于所有数据均存储在非托管内存中，务必调用 `Free()` 释放资源，避免内存泄露。
+
+- **字符编码限制**  
+  目前实现对 UTF-8 的基础编码和解码，不完全支持代理对（仅处理 BMP 内的字符），在支持大字符范围时可能需要扩展相应逻辑。
+
+- **性能**  
+  部分方法在需要复制大量字节数据时可能存在性能瓶颈，使用时请注意数据量较大场景下的效率问题。
+
+---
+
