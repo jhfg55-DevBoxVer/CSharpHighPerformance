@@ -30,6 +30,7 @@ public class UnmanagedStringTests
             {
                 count++;
             }
+            // 对于纯 ASCII 字符，CharCount 和字符串长度相同
             Assert.AreEqual(test.Length, count);
         }
         finally
@@ -46,6 +47,7 @@ public class UnmanagedStringTests
         try
         {
             int count = us.CharCount();
+            // 对于此测试字符串，每个字符占1个 UTF-8 字节（假设没有代理对），因此字符数与 Length 相等
             Assert.AreEqual(test.Length, count);
         }
         finally
@@ -115,6 +117,47 @@ public class UnmanagedStringTests
         {
             us.InsertAt(0, "Test");
             Assert.AreEqual("Test", us.ToString());
+            // 容量应不小于 100
+            Assert.IsTrue(us.Capacity >= 100);
+        }
+        finally
+        {
+            us.Free();
+        }
+    }
+
+    [TestMethod]
+    public void ReserveAndShrinkToFitTest()
+    {
+        string test = "Data";
+        UnmanagedString us = new UnmanagedString(test);
+        try
+        {
+            // 初始容量即为字节数，可能较接近于 Length
+            int initialCapacity = us.Capacity;
+            // Reserve 额外空间
+            us.Reserve(50);
+            Assert.IsTrue(us.Capacity >= us.Length + 50);
+            // 调用 ShrinkToFit 之后，容量应等于当前 Length
+            us.ShrinkToFit();
+            Assert.AreEqual(us.Length, us.Capacity);
+        }
+        finally
+        {
+            us.Free();
+        }
+    }
+
+    [TestMethod]
+    public void PushAndPushStrTest()
+    {
+        UnmanagedString us = UnmanagedString.New();
+        try
+        {
+            // 使用 Push 和 PushStr 追加字符和字符串
+            us.Push('a');
+            us.PushStr("bc");
+            Assert.AreEqual("abc", us.ToString());
         }
         finally
         {
