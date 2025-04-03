@@ -7,7 +7,7 @@ public class UnmanagedStringTests
     public void ConstructorAndToStringTest()
     {
         string test = "Hello, 世界!";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             Assert.AreEqual(test, us.ToString());
@@ -22,7 +22,7 @@ public class UnmanagedStringTests
     public void CharEnumerableTest()
     {
         string test = "abc";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             int count = 0;
@@ -43,7 +43,7 @@ public class UnmanagedStringTests
     public void CharCountTest()
     {
         string test = "Hello, 世界!";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             int count = us.CharCount();
@@ -60,7 +60,7 @@ public class UnmanagedStringTests
     public void RemoveAtTest()
     {
         string test = "Hello";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             // 删除索引1处字符 'e'
@@ -78,7 +78,7 @@ public class UnmanagedStringTests
     public void InsertAtCharTest()
     {
         string test = "Hllo";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             // 在索引1处插入字符 'e'
@@ -95,7 +95,7 @@ public class UnmanagedStringTests
     public void InsertAtStringTest()
     {
         string test = "Hell!";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             // 在索引4处插入字符串 "o" 完成 "Hello!"
@@ -111,8 +111,8 @@ public class UnmanagedStringTests
     [TestMethod]
     public void WithCapacityTest()
     {
-        // 使用 WithCapacity 方法创建具备预分配空间的 UnmanagedString
-        UnmanagedString us = UnmanagedString.WithCapacity(100);
+        // 使用 WithCapacity 方法创建具备预分配空间的 UString
+        UString us = UString.WithCapacity(100);
         try
         {
             us.InsertAt(0, "Test");
@@ -130,7 +130,7 @@ public class UnmanagedStringTests
     public void ReserveAndShrinkToFitTest()
     {
         string test = "Data";
-        UnmanagedString us = new UnmanagedString(test);
+        UString us = new UString(test);
         try
         {
             // 初始容量即为字节数，可能较接近于 Length
@@ -151,7 +151,7 @@ public class UnmanagedStringTests
     [TestMethod]
     public void PushAndPushStrTest()
     {
-        UnmanagedString us = UnmanagedString.New();
+        UString us = UString.New();
         try
         {
             // 使用 Push 和 PushStr 追加字符和字符串

@@ -7,15 +7,15 @@ namespace MoreUnmanagedTypes
     // 定义非托管字符谓词，返回 true 表示保留此字符
     public unsafe delegate bool UnmanagedCharPredicate(int codepoint, int charIndex);
 
-    public unsafe struct UnmanagedString : IComparable<UnmanagedString>, IEquatable<UnmanagedString>
+    public unsafe struct UString : IComparable<UString>, IEquatable<UString>, ICloneable
     {
         public byte* Ptr;    // 非托管内存中存储 UTF-8 数据的起始地址
         public int Length;   // 当前字符串的字节长度
         public int Capacity; // 当前已分配的总字节数
 
-        public static UnmanagedString New() => new UnmanagedString { Ptr = null, Length = 0, Capacity = 0 };
+        public static UString New() => new UString { Ptr = null, Length = 0, Capacity = 0 };
 
-        public UnmanagedString(string s)
+        public UString(string s)
         {
             if (s == null)
                 throw new ArgumentNullException(nameof(s));
@@ -33,7 +33,7 @@ namespace MoreUnmanagedTypes
                     char c = p[i];
                     int codepoint;
                     int encoded = 0;
-                    // 检查是否为代理对。虽然 UnmanagedString 最终存储的是 UTF-8 编码的数据，但 .NET 的字符串（System.String）本身是以 UTF-16 格式存储的，这意味着对于超过 BMP 的 Unicode 码点，会使用代理对（surrogate pairs）表示。在将 UTF-16 字符串转换为 UTF-8 时，必须正确处理这些代理对，以确保转换后生成的 UTF-8 数据是正确和完整的。如果不考虑代理对，可能会将高代理项和低代理项错误地分别当作单个字符处理，从而导致 UTF-8 编码数据不正确。
+                    // 检查是否为代理对。虽然 UString 最终存储的是 UTF-8 编码的数据，但 .NET 的字符串（System.String）本身是以 UTF-16 格式存储的，这意味着对于超过 BMP 的 Unicode 码点，会使用代理对（surrogate pairs）表示。在将 UTF-16 字符串转换为 UTF-8 时，必须正确处理这些代理对，以确保转换后生成的 UTF-8 数据是正确和完整的。如果不考虑代理对，可能会将高代理项和低代理项错误地分别当作单个字符处理，从而导致 UTF-8 编码数据不正确。
 
                     if (char.IsHighSurrogate(c) && i + 1 < s.Length && char.IsLowSurrogate(p[i + 1]))
                     {
@@ -52,12 +52,12 @@ namespace MoreUnmanagedTypes
             }
         }
 
-        public static UnmanagedString WithCapacity(int capacity)
+        public static UString WithCapacity(int capacity)
         {
             if (capacity < 0)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
 
-            UnmanagedString us;
+            UString us;
             us.Capacity = capacity;
             us.Length = 0;
             us.Ptr = capacity > 0 ? (byte*)Marshal.AllocHGlobal(capacity) : null;
@@ -282,8 +282,8 @@ namespace MoreUnmanagedTypes
 
         public unsafe struct CharEnumerable : IEnumerable<int>
         {
-            private UnmanagedString _str;
-            public CharEnumerable(UnmanagedString s) => _str = s;
+            private UString _str;
+            public CharEnumerable(UString s) => _str = s;
 
             public IEnumerator<int> GetEnumerator() => new CharEnumerator(_str);
 
@@ -292,10 +292,10 @@ namespace MoreUnmanagedTypes
 
         public unsafe struct CharEnumerator : IEnumerator<int>
         {
-            private UnmanagedString _str;
+            private UString _str;
             private int _pos;
             private int _current;
-            public CharEnumerator(UnmanagedString s)
+            public CharEnumerator(UString s)
             {
                 _str = s;
                 _pos = 0;
@@ -502,7 +502,7 @@ namespace MoreUnmanagedTypes
         }
 
         // IEquatable 实现：逐字节比较
-        public bool Equals(UnmanagedString other)
+        public bool Equals(UString other)
         {
             if (Length != other.Length)
                 return false;
@@ -516,7 +516,7 @@ namespace MoreUnmanagedTypes
 
         public override bool Equals(object? obj)
         {
-            if (obj is UnmanagedString other)
+            if (obj is UString other)
                 return Equals(other);
             return false;
         }
@@ -535,7 +535,7 @@ namespace MoreUnmanagedTypes
         }
 
         // IComparable 实现：按字典序逐字节比较
-        public int CompareTo(UnmanagedString other)
+        public int CompareTo(UString other)
         {
             int min = Length < other.Length ? Length : other.Length;
             for (int i = 0; i < min; i++)
@@ -548,12 +548,12 @@ namespace MoreUnmanagedTypes
         }
 
         // 重载比较运算符
-        public static bool operator ==(UnmanagedString left, UnmanagedString right) => left.Equals(right);
-        public static bool operator !=(UnmanagedString left, UnmanagedString right) => !left.Equals(right);
-        public static bool operator <(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) < 0;
-        public static bool operator >(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) > 0;
-        public static bool operator <=(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) <= 0;
-        public static bool operator >=(UnmanagedString left, UnmanagedString right) => left.CompareTo(right) >= 0;
+        public static bool operator ==(UString left, UString right) => left.Equals(right);
+        public static bool operator !=(UString left, UString right) => !left.Equals(right);
+        public static bool operator <(UString left, UString right) => left.CompareTo(right) < 0;
+        public static bool operator >(UString left, UString right) => left.CompareTo(right) > 0;
+        public static bool operator <=(UString left, UString right) => left.CompareTo(right) <= 0;
+        public static bool operator >=(UString left, UString right) => left.CompareTo(right) >= 0;
 
         /// <summary>
         /// 在字符串尾部追加一个字符.
@@ -576,11 +576,11 @@ namespace MoreUnmanagedTypes
         /// 以字符索引为单位，返回并分离出从指定索引开始的后半部分字符串。
         /// 原字符串长度更新为分离前半部分的长度。
         /// </summary>
-        public UnmanagedString SplitOff(int charIndex)
+        public UString SplitOff(int charIndex)
         {
             int offset = GetByteOffsetForCharIndex(charIndex);
             int newLen = Length - offset;
-            UnmanagedString result = WithCapacity(newLen);
+            UString result = WithCapacity(newLen);
             // 拷贝剩余的字节
             for (int i = 0; i < newLen; i++)
             {
@@ -593,9 +593,9 @@ namespace MoreUnmanagedTypes
         }
 
         /// <summary>
-        /// 删除 [charIndexStart, charIndexEnd) 范围内的字符，并返回被删除部分构成的 UnmanagedString。
+        /// 删除 [charIndexStart, charIndexEnd) 范围内的字符，并返回被删除部分构成的 UString。
         /// </summary>
-        public UnmanagedString Drain(int charIndexStart, int charIndexEnd)
+        public UString Drain(int charIndexStart, int charIndexEnd)
         {
             int start = GetByteOffsetForCharIndex(charIndexStart);
             int end = GetByteOffsetForCharIndex(charIndexEnd);
@@ -603,7 +603,7 @@ namespace MoreUnmanagedTypes
                 throw new ArgumentException("结束位置不能小于起始位置");
 
             int drainLen = end - start;
-            UnmanagedString result = WithCapacity(drainLen);
+            UString result = WithCapacity(drainLen);
             for (int i = 0; i < drainLen; i++)
             {
                 result.Ptr[i] = Ptr[start + i];
@@ -622,7 +622,7 @@ namespace MoreUnmanagedTypes
         /// <summary>
         /// 用 replacement 替换 [charIndexStart, charIndexEnd) 范围的字符。
         /// </summary>
-        public void ReplaceRange(int charIndexStart, int charIndexEnd, UnmanagedString replacement)
+        public void ReplaceRange(int charIndexStart, int charIndexEnd, UString replacement)
         {
             int start = GetByteOffsetForCharIndex(charIndexStart);
             int end = GetByteOffsetForCharIndex(charIndexEnd);
@@ -698,5 +698,13 @@ namespace MoreUnmanagedTypes
             }
             Length = dest;
         }
+        public object Clone()
+        {
+            UString clone = WithCapacity(Capacity);
+            Buffer.MemoryCopy(Ptr, clone.Ptr, Capacity, Length);
+            clone.Length = Length;
+            return clone;
+        }
+
     }
 }
